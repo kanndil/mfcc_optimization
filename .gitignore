@@ -50,3 +50,7 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+.vscode/
+kws_nnom_example/test_audio/test_x.txt
+kws_nnom_example/test_audio/test_y.txt
