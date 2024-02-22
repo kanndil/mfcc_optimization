@@ -32,7 +32,8 @@
 #include <stdint.h>
 #include "string.h"
 #include <math.h>
-
+#include <stdio.h>
+//#include "fft2.h"
 
 #define SAMP_FREQ 16000
 #define MEL_LOW_FREQ 20
@@ -49,7 +50,7 @@ typedef struct _mfcc_t{ // MARK: - this can be static
 	int is_append_energy;
 	float preempha;
     float frame[512];                  // MARK: - this can be static -Done
-    float buffer[512];                 // MARK: - this can be static -Done
+    float buffer[257];                 // MARK: - this can be static -Done
     float mel_energies[26];           // MARK: - this can be static -Done
     float window_func[512];            // MARK: - this can be static -Done
     //int32_t fbank_filter_first[26];   // MARK: - this can be static -Done
