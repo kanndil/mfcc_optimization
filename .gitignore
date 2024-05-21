@@ -56,4 +56,4 @@ kws_nnom_example/test_audio/test_x.txt
 kws_nnom_example/test_audio/test_y.txt
 kws_nnom_example/my_program
 kws_nnom_example/obj
-*.DS_Store
+#*.DS_Store
