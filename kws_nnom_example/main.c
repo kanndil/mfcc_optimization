@@ -42,13 +42,9 @@ const char label_name[][10] =  {"backward", "bed", "bird", "cat", "dog", "down",
 
 
 
-int16_t audio[512];
-char ground_truth[12000][10];
-#define SAMP_FREQ 16000
-#define AUDIO_FRAME_LEN (512) //31.25ms * 16000hz = 512, // FFT (windows size must be 2 power n)
-
 mfcc_t mfcc;
-//int32_t audio_data[4000]; //32000/8
+char ground_truth[12000][10];
+#define AUDIO_FRAME_LEN (512) //31.25ms * 16000hz = 512, // FFT (windows size must be 2 power n)
 int dma_audio_buffer[AUDIO_FRAME_LEN]; //512
 int16_t audio_buffer_16bit[(int)(AUDIO_FRAME_LEN*1.5)]; // an easy method for 50% overlapping
 int audio_sample_i = 0;
@@ -65,214 +61,92 @@ float mfcc_features_f[MFCC_COEFFS];             // output of mfcc
 int8_t mfcc_features[MFCC_LEN][MFCC_COEFFS];     // ring buffer
 int8_t mfcc_features_seq[MFCC_LEN][MFCC_COEFFS]; // sequencial buffer for neural network input.
 uint32_t mfcc_feat_index = 0;
-
-// msh debugging controls
-bool is_print_abs_mean = false; // to print the mean of absolute value of the mfcc_features_seq[][]
-bool is_print_mfcc  = false;    // to print the raw mfcc features at each update
-
-void Error_Handler(void);
-static int32_t abs_mean(int8_t *p, size_t size);
-void quantize_data(float*din, int8_t *dout, uint32_t size, uint32_t int_bit);
-void thread_kws_serv(void);
-int processes_counter=0;
-
 #define MAX_SIZE 40001 // Assuming integers are in the range -1000 to 1000
 
-int counts[MAX_SIZE] = {0}; // Global array to store counts
-int max_number =0;
-int min_number =0;
-void count_max_min(int arr[], int size){
-    for (int i = 0; i < size; i++) {
-        if (max_number < arr[i]){
-            max_number= arr[i];
-        }
-        if (min_number > arr[i]){
-            min_number= arr[i];
-        }
-    }
-}
+void quantize_data(float*din, int8_t *dout, uint32_t size, uint32_t int_bit);
+void thread_kws_serv(void);
 
-void countNumbers(int arr[], int size) {
-    // Count occurrences of each number
-    for (int i = 0; i < size; i++) {
-        int temp_number = arr[i];
-        counts[temp_number + 20000]++; // Shift the index by 1000 to handle negative values
-    }
-}
 
-void writeCSV(const char *filename) {
-    FILE *file = fopen(filename, "w");
-    if (file == NULL) {
-        printf("Error opening file.\n");
-        return;
-    }
 
-    // Write header
-    fprintf(file, "Number,Count\n");
-    
-    // Write counts
-    for (int i = 0; i < MAX_SIZE; i++) {
-        if (counts[i] > 0) {
-            fprintf(file, "%d,%d\n", i - 20000, counts[i]); // Shift back by 1000 for negative values
-        }
-    }
-    
-    fclose(file);
-}
 int main(void)
 {
-        
+    // create and compile the model
+    model = nnom_model_create();
+    
     uint32_t label;
     float prob;
     audio_sample_i = 0;
-    int s = 0; //number of audio samples to scan
-    float acc;
-    int correct = 0;
+    int audios_processed = 0;
+    int correct_audios = 0;
     FILE * file;
     FILE * ground_truth_f;
-    int j=0;
-    int F = 512;
+    int frame_size = 512;
     
     // Open files for reading audio data and ground truth labels
-    file = fopen ("./test_audio/test_x.txt","r"); //the audio data stored in a textfile
-    ground_truth_f = fopen ("./test_audio/test_y.txt","r"); //the ground truth textfile
+    file = fopen ("/Users/youssef/Documents/Work/AUC_Open_Hardware_Lab/mfcc_testing/Test_Audio/test_x.txt","r"); //the audio data stored in a textfile
+    ground_truth_f = fopen ("/Users/youssef/Documents/Work/AUC_Open_Hardware_Lab/mfcc_testing/Test_Audio/test_y.txt","r"); //the ground truth textfile
+
+    
     // Read ground truth labels from file into an array
-     while (!feof (ground_truth_f))
-    {
-      fscanf (ground_truth_f, "%s", ground_truth[j]);
-      j++;
-    }
+    for (int j = 0; fscanf(ground_truth_f, "%s", ground_truth[j++]) != EOF;) ;
     fclose (ground_truth_f);
 
-    int p = 0;
+    // calculate 13 coefficient, use number #2~13 coefficient. discard #1
+    // features, offset, bands, 512fft, 0 preempha, attached_energy_to_band0
+    mfcc_create(&mfcc, MFCC_COEFFS_LEN, MFCC_COEFFS_FIRST, MFCC_TOTAL_NUM_BANK, AUDIO_FRAME_LEN, 0.97f, true);
+
     
-
-    // create and compile the model
-    model = nnom_model_create();
-
     // Main loop for processing audio samples and performing inference
     while (1)
     {
-      // Read audio samples from file
-      while (p<F)
-        {
-          fscanf(file, "%d", &dma_audio_buffer[p]);
-          p++;
-        }
-        p=0;
-        
+        // Read audio samples from file
+        for (int p = 0; p < frame_size ; fscanf(file, "%d", &dma_audio_buffer[p++]));
+   
         // Process audio samples and compute MFCC features
-        //printf("here");
-//        countNumbers(dma_audio_buffer, 512);
-        count_max_min(dma_audio_buffer, 512);
         thread_kws_serv();
-        //break;
         
         // Update audio sample index and adjust frame size for overlap
-        audio_sample_i = audio_sample_i + F;
+        audio_sample_i += frame_size;
         if(audio_sample_i == 15872) //31*512
-            F = 128; //0.25*512 // Adjust frame size for 50% overlap
-        else
-            F = 512;
+            frame_size = 128; //0.25*512 // Adjust frame size for 50% overlap
 
         // Perform inference when enough samples are available
-        if(audio_sample_i>=16000)
+        if(audio_sample_i==16000)
         {
-            // ML
             // Copy MFCC features to input data buffer for the neural network
             memcpy(nnom_input_data, mfcc_features, MFCC_FEAT_SIZE);
             
             // Make a prediction using the neural network
             nnom_predict(model, &label, &prob);
-
-            // output
-            printf("%d %s : %d%% - Ground Truth is: %s\n", s, (char*)&label_name[label], (int)(prob * 100),ground_truth[s]);
+            printf("%d %s : %d%% - Ground Truth is: %s\n", audios_processed, (char*)&label_name[label], (int)(prob * 100),ground_truth[audios_processed]);
             
             // Check if the predicted label matches the ground truth label
-            if(strcmp(ground_truth[s], label_name[label])==0)
-                correct++;
-            
-            // Print accuracy at regular intervals
-            if(s%100==0 && s > 0)
-            {
-                acc = ((float)correct/(s) * 100);
-                printf("Accuracy : %.6f%%\n",acc);
-            }
+            if(strcmp(ground_truth[audios_processed], label_name[label]) == 0)
+                correct_audios++;
             
             // Reset audio sample index and frame size
             audio_sample_i = 0;
-            F = 512;
-            s=s+1;// Increment sample counter
+            audios_processed++;// Increment sample counter
+            frame_size = 512;
         }
 
         // Exit the loop when a sufficient number of samples are processed
-        if(s>=11000) break;
+        if(audios_processed>=11000) break;
     }
     
     // Calculate and print the overall accuracy
-    acc = ((float)correct/(s) * 100);
-    printf("Accuracy : %.6f%%\n",acc);
+    printf("Accuracy : %.6f%%\n",((float)correct_audios/(audios_processed) * 100));
     
     // Close the file containing audio samples
     fclose(file);
-//    writeCSV("/Users/youssef/Desktop/num_analysis.csv");
-
 }
-
-
-
-void Error_Handler(void)
-{
-    printf("error\n");
-}
-
-static int32_t abs_mean(int8_t *p, size_t size)
-{
-    int64_t sum = 0;
-    for(size_t i = 0; i<size; i++)
-    {
-        if(p[i] < 0)
-            sum+=-p[i];
-        else
-            sum += p[i];
-    }
-    return sum/size;
-}
-
-void quantize_data(float*din, int8_t *dout, uint32_t size, uint32_t int_bit)
-{
-    #define _MAX(x, y) (((x) > (y)) ? (x) : (y))
-    #define _MIN(x, y) (((x) < (y)) ? (x) : (y))
-    float limit = (1 << int_bit);
-    float d;
-    for(uint32_t i=0; i<size; i++)
-    {
-        d = round(_MAX(_MIN(din[i], limit), -limit) / limit * 128);
-        d = d/128.0f;
-        dout[i] = round(d *127);
-    }
-}
-
 
 
 void thread_kws_serv(void)
 {
 
-//    #define SaturaLH(N, L, H) (((N)<(L))?(L):(((N)>(H))?(H):(N))) // not used
-    int *p_raw_audio;
-
-
-    // calculate 13 coefficient, use number #2~13 coefficient. discard #1
-    // features, offset, bands, 512fft, 0 preempha, attached_energy_to_band0
-    if (processes_counter==0){
-        mfcc_create(&mfcc, MFCC_COEFFS_LEN, MFCC_COEFFS_FIRST, MFCC_TOTAL_NUM_BANK, AUDIO_FRAME_LEN, 0.97f, true);
-        processes_counter++;
-    }
-
         if (audio_sample_i == 15872)
-            memset(&dma_audio_buffer[128], 0, sizeof(int) * 128); //to fill the latest quarter in the latest frame
-        p_raw_audio = dma_audio_buffer;
-
+            memset(&dma_audio_buffer[128], 0, sizeof(int) * 384); //to fill the latest quarter in the latest frame
 
         // memory move
         // audio buffer = | 256 byte old data |   256 byte new data 1 | 256 byte new data 2 |
@@ -283,7 +157,7 @@ void thread_kws_serv(void)
         // volume*4
         for(int i = 0; i < AUDIO_FRAME_LEN; i++)
         {
-            audio_buffer_16bit[AUDIO_FRAME_LEN/2+i] = p_raw_audio[i];
+            audio_buffer_16bit[AUDIO_FRAME_LEN/2+i] = dma_audio_buffer[i];
         }
 
         // MFCC
@@ -308,7 +182,6 @@ void thread_kws_serv(void)
                         printf("%d ",  mfcc_features[mfcc_feat_index][q]);
                     printf("\n");
                 }
-
                 mfcc_feat_index++;
                 if(mfcc_feat_index >= MFCC_LEN)
                     mfcc_feat_index = 0;
@@ -317,3 +190,16 @@ void thread_kws_serv(void)
         }
 }
 
+void quantize_data(float*din, int8_t *dout, uint32_t size, uint32_t int_bit)
+{
+    #define _MAX(x, y) (((x) > (y)) ? (x) : (y))
+    #define _MIN(x, y) (((x) < (y)) ? (x) : (y))
+    float limit = (1 << int_bit);
+    float d;
+    for(uint32_t i=0; i<size; i++)
+    {
+        d = round(_MAX(_MIN(din[i], limit), -limit) / limit * 128);
+        d = d/128.0f;
+        dout[i] = round(d *127);
+    }
+}

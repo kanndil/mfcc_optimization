@@ -317,18 +317,7 @@ void mfcc_compute(mfcc_t *mfcc, const int16_t * audio_data, float* mfcc_out)
 
 	float sqrt_data;
 	//Apply mel filterbanks
-	for (bin = 0; bin < mfcc->num_fbank ; bin++)
-	{
-		float mel_energy = 0;
-		for (i = 0; i < mfcc->frame_len_padded/2+1; i++) {
-			mel_energy += mfcc->buffer[i] * mfcc->mel_fbank[bin][i];
-		}
-		mfcc->mel_energies[bin] = mel_energy;
-
-		//avoid log of zero
-		if (mel_energy == 0.0f)
-			mfcc->mel_energies[bin] = FLT_MIN;
-	}
+    apply_filter_banks(mfcc);
 
 	//Take log
 	float total_energy = 0;
@@ -352,3 +341,18 @@ void mfcc_compute(mfcc_t *mfcc, const int16_t * audio_data, float* mfcc_out)
 
 }
 
+void apply_filter_banks(mfcc_t *mfcc){
+    int bin, i;
+	for (bin = 0; bin < mfcc->num_fbank ; bin++)
+	{
+		float mel_energy = 0;
+		for (i = 0; i < mfcc->frame_len_padded/2+1; i++) {
+			mel_energy += mfcc->buffer[i] * mfcc->mel_fbank[bin][i];
+		}
+		mfcc->mel_energies[bin] = mel_energy;
+
+		//avoid log of zero
+		if (mel_energy == 0.0f)
+			mfcc->mel_energies[bin] = FLT_MIN;
+	}
+}

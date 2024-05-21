@@ -32,6 +32,7 @@
 #include <stdint.h>
 #include "string.h"
 #include <math.h>
+#include <stdio.h>
 
 #define SAMP_FREQ 16000
 #define MEL_LOW_FREQ 20
@@ -40,44 +41,37 @@
 #define M_2PI 6.283185307179586476925286766559005
 
 typedef struct _mfcc_t{ // MARK: - this can be static
-    int num_mfcc_features;
-	int num_features_offset;
-	int num_fbank;
+    int num_mfcc_features;      // this is the number of
+    int num_features_offset;
+    int num_fbank;
     int frame_len;
     int frame_len_padded;           // MARK: - this can be static // this can be fixed to make other variables static
-	int is_append_energy;
-	float preempha;
-    float * frame;                  // MARK: - this can be static
-    float * buffer;                 // MARK: - this can be static
-    float * mel_energies;           // MARK: - this can be static
-    float * window_func;            // MARK: - this can be static
-    int32_t * fbank_filter_first;   // MARK: - this can be static
-    int32_t * fbank_filter_last;    // MARK: - this can be static
-    float ** mel_fbank;             // MARK: - this can be static
-    float * dct_matrix;             // MARK: - this can be static
-	#ifdef PLATFORM_ARM
-		arm_rfft_fast_instance_f32* rfft;
-	#else
-		float* fft_buffer;
-	#endif
+    int is_append_energy;
+    float preempha;
+    float frame[512];                  // MARK: - this can be static -Done
+    float mel_energies[26];           // MARK: - this can be static -Done
+    float window_func[512];            // MARK: - this can be static -Done
+    float mel_fbins[28];
+    int mel_fbins_fix[28];
+    float dct_matrix[338];             // MARK: - this can be static -Done
+    #ifdef PLATFORM_ARM
+        arm_rfft_fast_instance_f32* rfft;
+    #endif
 } mfcc_t;
 
-static inline float InverseMelScale(float mel_freq) {
-  return 700.0f * (pow(10,(mel_freq / 2595.0f)) - 1.0f);
-}
-
-static inline float MelScale(float freq) {
-  return 2595.0f * log10(1.0f + freq / 700.0f);
-}
-
-float * create_dct_matrix(int32_t input_length, int32_t coefficient_count);
-float ** create_mel_fbank(mfcc_t* mfcc);
-
-mfcc_t *mfcc_create(int num_mfcc_features, int feature_offset, int num_fbank, int frame_len, float preempha, int is_append_energy);
-void mfcc_delete(mfcc_t* mfcc);
-
+static inline float InverseMelScale(float mel_freq);
+static inline float MelScale(float freq);
+void rearrange(float data_re[], float data_im[], const unsigned int N);
+void compute(float data_re[], float data_im[], const unsigned int N);
+void fft(float data_re[], float data_im[], const int N);
+void mfcc_create(mfcc_t *mfcc,int num_mfcc_features, int feature_offset, int num_fbank, int frame_len, float preempha, int is_append_energy);
+void create_dct_matrix(int32_t input_length, int32_t coefficient_count, mfcc_t* mfcc);
+void create_mel_fbank(mfcc_t *mfcc);
 void mfcc_compute(mfcc_t *mfcc, const int16_t * audio_data, float* mfcc_out);
-
+void apply_filter_banks(mfcc_t *mfcc);
+void apply_filter_banks2(mfcc_t *mfcc);
+void apply_filter_banks_fix(mfcc_t *mfcc);
+void apply_filter_banks_fix2(mfcc_t *mfcc);
 #endif
 
 

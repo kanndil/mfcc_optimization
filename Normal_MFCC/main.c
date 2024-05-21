@@ -116,17 +116,7 @@ void thread_kws_serv()
     // MARK: - this can be static // check inside
     mfcc = mfcc_create(MFCC_COEFFS_LEN, MFCC_COEFFS_FIRST, MFCC_TOTAL_NUM_BANK, AUDIO_FRAME_LEN, 0.97f, true);
     
-//    for(int i =0; i<512; i++)
-//        printf("%f ",  mfcc->window_func[i]);
-//    printf("\n");
-//    printf("%f ",  mfcc->window_func[342]);
-    
-//    for(int i =0; i<26; i++){
-//        for(int j =0; j<512; j++){
-//            printf("%f ",  mfcc->mel_fbank[i][j]);
-//        }
-//        printf("\n");
-//    }
+
     
         if (audio_sample_i == 15872)
             memset(&dma_audio_buffer[128], 0, sizeof(int) * 128); //to fill the latest quarter in the latest frame
@@ -242,21 +232,21 @@ int main(void)
         // Perform inference when enough samples are available
         if(audio_sample_i>=16000)
         {
-            // ML
-            // Copy MFCC features to input data buffer for the neural network
+            //// ML
+            //// Copy MFCC features to input data buffer for the neural network
             memcpy(nnom_input_data, mfcc_features, MFCC_FEAT_SIZE);
             
-            // Make a prediction using the neural network
+            //// Make a prediction using the neural network
             nnom_predict(model, &label, &prob);
 
-            // output
+            //// output
             printf("%d %s : %d%% - Ground Truth is: %s\n", s, (char*)&label_name[label], (int)(prob * 100),ground_truth[s]);
             
-            // Check if the predicted label matches the ground truth label
+            //// Check if the predicted label matches the ground truth label
             if(strcmp(ground_truth[s], label_name[label])==0)
                 correct++;
             
-            // Print accuracy at regular intervals
+            //// Print accuracy at regular intervals
             if(s%100==0 && s > 0)
             {
                 acc = ((float)correct/(s) * 100);

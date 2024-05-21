@@ -732,3 +732,99 @@ void apply_filter_banks2(mfcc_t *mfcc){
     mel_energy_this=mel_energy_next;
     mel_energy_next=0;
 }
+
+
+
+#define Q15_ONE (1 << 15)
+void apply_filter_banks_fix(mfcc_t *mfcc){
+
+    for (int j = 0; j < mfcc->num_fbank ; j++){
+        int left = mfcc->mel_fbins_fix[j];
+        int center = mfcc->mel_fbins_fix[j + 1];
+        int right = mfcc->mel_fbins_fix[j + 2];
+        int mel_energy = 0;
+
+        for (int i = left + Q15_ONE; i < center; i+= Q15_ONE) {
+            int mel_factor = (long)((long)(i - left) << 15) / (long)(center - left);
+            mel_energy +=  mfcc->frame[i >> 15] * mel_factor;
+        }
+        
+//        mel_energy += mfcc->frame[center >> 15];
+        for (int i = center ; i < right; i+= Q15_ONE) {
+            int mel_factor = (long)((long)(right - i)<< 15) / (long)(right - center);
+            mel_energy +=   mfcc->frame[i >> 15] * mel_factor;
+        }
+        
+
+        mfcc->mel_energies[j] = (float) mel_energy/1073741823.0f;
+        
+        if (mfcc->mel_energies[j] == 0.0f)
+            mfcc->mel_energies[j] = FLT_MIN;
+    }
+}
+
+
+
+void apply_filter_banks_fix2(mfcc_t *mfcc){
+    
+    int right_this, center_this;
+    
+    int left_next = mfcc->mel_fbins_fix[0];
+    int center_next = mfcc->mel_fbins_fix[1];
+    
+    int mel_energy_this = 0;
+    int mel_energy_next = 0;
+    
+    // calc first left
+    
+    for (int i = left_next + Q15_ONE; i < center_next; i+=Q15_ONE) {
+        int mel_factor = (long)((long)(i - left_next) << 15)  / (long)(center_next - left_next);
+        mel_energy_this += mfcc->frame[i >> 15] * mel_factor;
+    }
+    
+
+    for (int j = 0; j < mfcc->num_fbank-1 ; j++){
+        
+        right_this  = mfcc->mel_fbins_fix[j + 2];
+        center_this = mfcc->mel_fbins_fix[j + 1];
+        
+        left_next   = mfcc->mel_fbins_fix[j + 1];
+        center_next = mfcc->mel_fbins_fix[j + 2];
+       
+        mel_energy_this += mfcc->frame[center_this >> 15];
+        
+        int calc_base = (center_next - left_next);
+        
+        int i , k;
+        for( i = left_next + Q15_ONE,  k = right_this - Q15_ONE; (i < center_next) && (k > center_this); i+=Q15_ONE, k-=Q15_ONE){
+            int mel_factor = (long)((long)(i - left_next) << 15)  / (long)calc_base;
+            mel_energy_this += mfcc->frame[i>> 15] * mel_factor;
+            // calc next right
+            mel_energy_next += mfcc->frame[k>> 15] * mel_factor;// change index
+        }
+        
+        mfcc->mel_energies[j] = (float) mel_energy_this/1073741823.0f;
+        if (mfcc->mel_energies[j] == 0.0f)
+            mfcc->mel_energies[j] = FLT_MIN;
+        
+        mel_energy_this=mel_energy_next;
+        mel_energy_next=0;
+    }
+    
+    // cal last right
+    right_this  = mfcc->mel_fbins_fix[mfcc->num_fbank - 1];
+    center_this = mfcc->mel_fbins_fix[mfcc->num_fbank - 2];
+    
+    for (int i = center_this+Q15_ONE; i < right_this; i+=Q15_ONE) {
+        int mel_factor = (long)((long)(right_this - i) << 15)/ (long)(right_this - center_this);
+        mel_energy_this += mfcc->frame[i>> 15] * mel_factor;
+    }
+
+    mfcc->mel_energies[mfcc->num_fbank-1] = (float) mel_energy_this/1073741823.0f;
+    if (mfcc->mel_energies[mfcc->num_fbank-1] == 0.0f)
+        mfcc->mel_energies[mfcc->num_fbank-1] = FLT_MIN;
+    
+}
+
+
+
